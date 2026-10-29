@@ -100,7 +100,7 @@ private struct Header: View {
             VStack(alignment: .leading, spacing: 6) {
                 HStack(spacing: 8) {
                     PixelSprite(rows: Sprites.mark, palette: Sprites.markPalette, pixel: 4)
-                    (Text("EAR").foregroundStyle(palette.text) + Text("SHOT").foregroundStyle(Ink.accent))
+                    (Text("EAR").foregroundStyle(palette.text) + Text("SHOT").foregroundStyle(palette.accentText))
                         .font(Typeface.pixel(14, bold: true))
                         .tracking(1)
                 }
@@ -163,8 +163,8 @@ private struct LinkStatus: View {
             EmptyView()
         case .linking:
             HStack(spacing: 5) {
-                Text("linking").foregroundStyle(Ink.accent)
-                Caret()
+                Text("linking").foregroundStyle(palette.accentText)
+                Caret(color: palette.accentText)
             }
             .font(Typeface.mono(10.5))
         case .away:
@@ -245,6 +245,7 @@ private struct SettingsView: View {
 
 /// Three swatch cards, each a tiny preview of the popover in that theme.
 private struct ThemePicker: View {
+    @Environment(\.palette) private var palette
     @Binding var theme: Theme
     @Namespace private var namespace
 
@@ -270,7 +271,7 @@ private struct ThemePicker: View {
                         Text(option.title.uppercased())
                             .font(Typeface.pixel(9, bold: selected))
                             .tracking(0.6)
-                            .foregroundStyle(selected ? Ink.accent : Palette.of(theme).muted)
+                            .foregroundStyle(selected ? palette.accentText : palette.muted)
                     }
                     .contentShape(Rectangle())
                 }

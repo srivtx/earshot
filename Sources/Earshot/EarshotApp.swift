@@ -55,5 +55,6 @@ private struct MenuBarLabel: View {
                 .frame(width: 32, alignment: .leading)
         }
         .accessibilityLabel(store.menuBarLevel.map { "Earshot, buds at \($0) percent" } ?? "Earshot")
+        .task { await DevShots.runIfRequested(store: store) }
     }
 }

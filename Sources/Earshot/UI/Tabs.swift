@@ -110,9 +110,20 @@ private struct AncStrength: View {
 
 struct SoundTab: View {
     @Environment(BudsStore.self) private var store
+    @Environment(\.isSnapshot) private var isSnapshot
 
     var body: some View {
-        ScrollView(.vertical) {
+        if isSnapshot {
+            sections.modifier(LinkedOnly())
+        } else {
+            ScrollView(.vertical) { sections }
+                .scrollIndicators(.never)
+                .scrollBounceBehavior(.basedOnSize)
+                .modifier(LinkedOnly())
+        }
+    }
+
+    private var sections: some View {
         VStack(alignment: .leading, spacing: 16) {
             VStack(alignment: .leading, spacing: 8) {
                 SectionLabel(text: "EQ", trailing: store.pendingEq != nil ? "applying…" : nil)
@@ -139,10 +150,6 @@ struct SoundTab: View {
         }
         .padding(.horizontal, 16)
         .padding(.bottom, 16)
-        }
-        .scrollIndicators(.never)
-        .scrollBounceBehavior(.basedOnSize)
-        .modifier(LinkedOnly())
     }
 
     private func miscRow(_ title: String, _ caption: String, _ setting: MiscSetting, tag: String? = nil) -> some View {
@@ -296,6 +303,7 @@ struct TapsTab: View {
 private struct GestureRow: View {
     @Environment(BudsStore.self) private var store
     @Environment(\.palette) private var palette
+    @Environment(\.isSnapshot) private var isSnapshot
     let side: BudSide
     let gesture: EarshotCore.Gesture
     let title: String
@@ -309,6 +317,9 @@ private struct GestureRow: View {
             Text(title)
                 .font(Typeface.grotesk(13, .medium))
             Spacer()
+            if isSnapshot {
+                menuLabel(current)
+            } else {
             Menu {
                 ForEach(TouchAction.allCases, id: \.self) { action in
                     Button {
@@ -322,19 +333,13 @@ private struct GestureRow: View {
                     }
                 }
             } label: {
-                HStack(spacing: 6) {
-                    Text(label(for: current))
-                        .font(Typeface.mono(11, .medium))
-                        .foregroundStyle(current == TouchAction.off.rawValue ? palette.faint : (palette.isDark ? Ink.accent : Ink.ink))
-                    Image(systemName: "chevron.up.chevron.down")
-                        .font(.system(size: 8, weight: .bold))
-                        .foregroundStyle(palette.faint)
-                }
+                menuLabel(current)
             }
             .menuStyle(.borderlessButton)
             .menuIndicator(.hidden)
             .fixedSize()
             .disabled(current == nil)
+            }
         }
         .padding(.horizontal, 12)
         .frame(height: 38)
@@ -342,6 +347,17 @@ private struct GestureRow: View {
         .contentShape(Rectangle())
         .onHover { hovering = $0 }
         .animation(.ui, value: hovering)
+    }
+
+    private func menuLabel(_ current: UInt8?) -> some View {
+        HStack(spacing: 6) {
+            Text(label(for: current))
+                .font(Typeface.mono(11, .medium))
+                .foregroundStyle(current == TouchAction.off.rawValue ? palette.faint : palette.accentText)
+            Image(systemName: "chevron.up.chevron.down")
+                .font(.system(size: 8, weight: .bold))
+                .foregroundStyle(palette.faint)
+        }
     }
 
     private func label(for code: UInt8?) -> String {

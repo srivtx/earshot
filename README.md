@@ -9,8 +9,12 @@
 </p>
 
 <p align="center">
-  <img src="docs/sound-tab.png" width="320" alt="Earshot's Sound tab: EQ presets, effects and modes for realme Buds Air 7">
+  <img src="docs/screens/buds-dark.png" width="260" alt="Buds tab: battery for each bud and the case, noise control and ANC strength">
+  <img src="docs/screens/sound-dark.png" width="260" alt="Sound tab: EQ presets, effects and modes">
+  <img src="docs/screens/taps-dark.png" width="260" alt="Taps tab: what each gesture does on each bud">
 </p>
+
+<p align="center"><sub>Buds · Sound · Taps, in the Dark theme. Also comes in Light, or follows your Mac.</sub></p>
 
 A menu-bar app that gives **realme Buds** on macOS what the realme Link app gives them on a phone: battery, noise control, EQ, effects and tap controls.
 
@@ -39,6 +43,14 @@ Built and tested on a **realme Buds Air 7** (firmware 1.1.0.62) on macOS 26, App
 
 Settings are saved on the buds, so they carry over to your phone. The lowest bud's battery shows in the menu bar.
 
+**Light theme**
+
+<p align="center">
+  <img src="docs/screens/buds-light.png" width="240" alt="Buds tab in the Light theme">
+  <img src="docs/screens/sound-light.png" width="240" alt="Sound tab in the Light theme">
+  <img src="docs/screens/taps-light.png" width="240" alt="Taps tab in the Light theme">
+</p>
+
 ## Install
 
 1. Download `Earshot.zip` from [Releases](../../releases) and unzip it into `/Applications`.
@@ -64,6 +76,12 @@ Swift 6 is enough; Xcode is optional.
 
 Every rebuild has a new ad-hoc signature, so macOS asks for Bluetooth access again.
 
+The README screenshots are rendered by the app itself from live data. With the buds connected, run:
+
+```bash
+open --env EARSHOT_SHOTS="$PWD/docs/screens" /Applications/Earshot.app
+```
+
 ## How it works
 
 realme, OPPO and OnePlus buds share one control protocol. It runs over classic Bluetooth RFCOMM on the vendor service `0000079A-D102-11E1-9B23-00025B00A5A5` (channel 15 on the Buds Air 7). Each message is framed as:
@@ -86,6 +104,7 @@ Code layout:
 | `Sources/Earshot/BudsLink.swift` | Finds the buds, opens and recovers the channel (retries, wake, reconnects), one request at a time. |
 | `Sources/Earshot/BudsStore.swift` | App state, with optimistic changes that roll back if the buds refuse. |
 | `Sources/Earshot/UI` | The popover: Dark, Light or System theme. |
+| `Sources/Earshot/DevShots.swift` | Renders the README screenshots when `EARSHOT_SHOTS` is set. |
 
 Logs:
 

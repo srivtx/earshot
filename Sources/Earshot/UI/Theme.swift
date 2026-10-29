@@ -47,6 +47,8 @@ struct Palette {
     let raised: Color
     /// Window fill.
     let window: Color
+    /// Pink for text and thin marks: the brand pink on dark, a deeper pink that reads on light.
+    let accentText: Color
 
     var isDark: Bool { theme == .dark }
 
@@ -57,10 +59,12 @@ struct Palette {
             of(systemIsDark ? .dark : .light)
         case .dark:
             Palette(theme: theme, text: Color(hex: 0xECEFE9), muted: Color(hex: 0x93A197), faint: Color(hex: 0x5D6C62),
-                    line: Color(hex: 0x22322A), surface: Color(hex: 0x101812), raised: Color(hex: 0x18241C), window: Color(hex: 0x0A100C))
+                    line: Color(hex: 0x22322A), surface: Color(hex: 0x101812), raised: Color(hex: 0x18241C), window: Color(hex: 0x0A100C),
+                    accentText: Ink.accent)
         case .light:
             Palette(theme: theme, text: Color(hex: 0x13221A), muted: Color(hex: 0x4E5D53), faint: Color(hex: 0x8A978E),
-                    line: Color(hex: 0xD6DCD4), surface: .white, raised: Color(hex: 0xEDF1EB), window: Color(hex: 0xF3F5F0))
+                    line: Color(hex: 0xD6DCD4), surface: .white, raised: Color(hex: 0xEDF1EB), window: Color(hex: 0xF3F5F0),
+                    accentText: Color(hex: 0xC2378F))
         }
     }
 }
@@ -175,5 +179,19 @@ struct GrainOverlay: View {
             .blendMode(.overlay)
             .opacity(opacity)
             .allowsHitTesting(false)
+    }
+}
+
+// MARK: - Screenshots
+
+private struct SnapshotKey: EnvironmentKey {
+    static let defaultValue = false
+}
+
+extension EnvironmentValues {
+    /// Set while rendering README screenshots: scroll views and menus draw as plain views.
+    var isSnapshot: Bool {
+        get { self[SnapshotKey.self] }
+        set { self[SnapshotKey.self] = newValue }
     }
 }
