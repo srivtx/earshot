@@ -1,8 +1,16 @@
 <p align="center">
-  <img src="docs/sound-tab.png" width="340" alt="Earshot's Sound tab: EQ presets, effects and modes for realme Buds Air 7">
+  <img src="docs/logo.png" width="112" alt="Earshot logo: a soft-pixel earbud on a grain-green tile">
 </p>
 
-# Earshot
+<h1 align="center">Earshot</h1>
+
+<p align="center">
+  <a href="../../releases/latest"><b>Download for macOS</b></a> · macOS 15+ · Apple Silicon
+</p>
+
+<p align="center">
+  <img src="docs/sound-tab.png" width="320" alt="Earshot's Sound tab: EQ presets, effects and modes for realme Buds Air 7">
+</p>
 
 A menu-bar app that gives **realme Buds** on macOS what the realme Link app gives them on a phone: battery, noise control, EQ, effects and tap controls.
 
