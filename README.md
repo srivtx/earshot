@@ -92,7 +92,7 @@ AA <length: LEB128> 00 00 <command: u16 LE> <seq> <payload length: u16 LE> <payl
 
 Replies set bit 15 of the command, and the buds also push changes unprompted. A few things specific to the Buds Air 7:
 
-- The buds sometimes refuse noise-control changes with status `0x0E`. So far every refusal came while they reported no bud in an ear, and every successful change while they reported one. Earshot shows what the buds report instead of failing silently.
+- The buds only accept noise-control changes while they detect a bud in an ear. Otherwise they reply with status `0x0E`, and Earshot says so (with a "wear to switch" hint beforehand) instead of failing silently.
 - Volume boost is read with `0x0110` and written with `0x0407`. Feature switch `0x09` is vocal enhancement, not volume boost.
 - The spatial-audio reply declares a longer payload than it carries, so the frame length is trusted over the declared one.
 

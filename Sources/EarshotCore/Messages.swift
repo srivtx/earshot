@@ -173,7 +173,7 @@ public enum Request {
 /// Status bytes the buds put in a set command's reply.
 public enum AckStatus {
     public static let ok: UInt8 = 0x00
-    /// Seen on the Buds Air 7 when changing noise control with no bud in an ear.
+    /// The Buds Air 7 refuse noise-control changes with this while no bud is in an ear.
     public static let notWorn: UInt8 = 0x0E
 }
 
