@@ -1,11 +1,12 @@
-// Wire format of the Oppo/realme earbuds control protocol (RFCOMM service 0000079A-…).
+// Wire format of the control protocol realme, OPPO and OnePlus buds share ("OPO"),
+// on RFCOMM service 0000079A-….
 //
 //   AA <len: LEB128> 00 00 <cmd: u16 LE> <seq: u8> <payloadLen: u16 LE> <payload…>
 //
 // `len` counts everything after itself (7 header bytes + payload). Replies set bit 15 of the
 // command; unsolicited pushes use SUBSCRIPTION_RET. There is no checksum.
 
-public struct Packet: Equatable, Sendable {
+public struct OPOPacket: Equatable, Sendable {
     public var command: UInt16
     public var seq: UInt8
     public var payload: [UInt8]
@@ -20,7 +21,7 @@ public struct Packet: Equatable, Sendable {
 
     public func encoded() -> [UInt8] {
         let body = 7 + payload.count
-        var out: [UInt8] = [Frame.preamble]
+        var out: [UInt8] = [OPOFrame.preamble]
         out += LEB128.encode(UInt(body))
         out += [0x00, 0x00, UInt8(command & 0xFF), UInt8(command >> 8), seq]
         out += [UInt8(payload.count & 0xFF), UInt8((payload.count >> 8) & 0xFF)]
@@ -29,8 +30,8 @@ public struct Packet: Equatable, Sendable {
     }
 }
 
-public enum Frame {
-    public static let preamble: UInt8 = 0xAA
+enum OPOFrame {
+    static let preamble: UInt8 = 0xAA
 }
 
 enum LEB128 {
@@ -63,21 +64,21 @@ enum LEB128 {
 }
 
 /// Reassembles packets from an RFCOMM byte stream, which may split or merge frames.
-public struct FrameDecoder: Sendable {
+public struct OPOFrameDecoder: Sendable {
     private var buffer: [UInt8] = []
     /// Upper bound so a corrupt length can't make us buffer forever.
     private static let maxFrame = 4096
 
     public init() {}
 
-    public mutating func feed(_ bytes: [UInt8]) -> [Packet] {
+    public mutating func feed(_ bytes: [UInt8]) -> [OPOPacket] {
         buffer += bytes
-        var packets: [Packet] = []
+        var packets: [OPOPacket] = []
 
         while !buffer.isEmpty {
-            guard buffer[0] == Frame.preamble else {
+            guard buffer[0] == OPOFrame.preamble else {
                 // Resync on the next preamble.
-                if let next = buffer.firstIndex(of: Frame.preamble) {
+                if let next = buffer.firstIndex(of: OPOFrame.preamble) {
                     buffer.removeFirst(next)
                 } else {
                     buffer.removeAll()
@@ -98,7 +99,7 @@ public struct FrameDecoder: Sendable {
             let command = UInt16(body[2]) | UInt16(body[3]) << 8
             // The frame length is authoritative: some replies (e.g. spatial audio on the Buds Air 7)
             // declare a longer payload than they carry.
-            packets.append(Packet(command: command, seq: body[4], payload: Array(body[7...])))
+            packets.append(OPOPacket(command: command, seq: body[4], payload: Array(body[7...])))
         }
         return packets
     }

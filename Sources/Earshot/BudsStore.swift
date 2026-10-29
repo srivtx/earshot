@@ -1,3 +1,4 @@
+import AppKit
 import EarshotCore
 import Foundation
 import Observation
@@ -9,6 +10,10 @@ import ServiceManagement
 @Observable
 final class BudsStore: BudsLinkDelegate {
     private(set) var link: BudsLink.State = .noBuds
+    /// What the connected model can do; nil until linked.
+    private(set) var capabilities: Capabilities?
+    /// The paired model's controls before it links, so the layout doesn't jump when it does.
+    private(set) var preview: Capabilities?
     private(set) var battery: [BatterySlot: BatteryReading] = [:]
     private(set) var placement: [BudSide: BudPlacement] = [:]
     private(set) var noiseMode: NoiseMode?
@@ -18,14 +23,12 @@ final class BudsStore: BudsLinkDelegate {
     private(set) var pendingAncLevel: AncLevel?
     private(set) var holdCycle: Set<NoiseMode> = []
     /// Settings the buds reported; ones they don't support never appear.
-    private(set) var misc: [MiscSetting: Bool] = [:]
-    /// Gesture bindings per bud, as raw action codes so unknown ones are preserved.
-    private(set) var touch: [BudSide: [Gesture: UInt8]] = [:]
-    private(set) var eq: EqPreset?
-    private(set) var pendingEq: EqPreset?
+    private(set) var toggles: [Toggle: Bool] = [:]
+    private(set) var touch: [BudSide: [Gesture: TouchAction]] = [:]
+    private(set) var eq: UInt8?
+    private(set) var pendingEq: UInt8?
     private(set) var firmware: String?
     private(set) var updatedAt: Date?
-    private(set) var volumeBoost: Bool?
     private(set) var ringing = false
     private(set) var notice: Notice?
     private(set) var launchAtLogin = SMAppService.mainApp.status == .enabled
@@ -38,7 +41,6 @@ final class BudsStore: BudsLinkDelegate {
     }
 
     @ObservationIgnored private let budsLink = BudsLink()
-    /// What the last change was, so its acknowledgement can be confirmed by name.
     @ObservationIgnored private var ringTimer: Timer?
     @ObservationIgnored private var noticeTimer: Timer?
 
@@ -52,23 +54,32 @@ final class BudsStore: BudsLinkDelegate {
         return false
     }
 
+    var profile: Profile? { budsLink.profile }
+
     /// The lowest earbud level, which is what decides when you need to charge.
     var menuBarLevel: Int? {
-        [battery[.left], battery[.right]].compactMap { $0?.level }.min()
+        if let single = battery[.single] { return single.level }
+        return [battery[.left], battery[.right]].compactMap { $0?.level }.min()
     }
 
     var shownNoiseMode: NoiseMode? { pendingNoiseMode ?? noiseMode }
     var shownAncLevel: AncLevel? { pendingAncLevel ?? ancLevel }
-    var shownEq: EqPreset? { pendingEq ?? eq }
+    var shownEq: UInt8? { pendingEq ?? eq }
+
+    /// What to lay out: the linked model, else the paired one, else the realme Buds Air 7.
+    var caps: Capabilities { capabilities ?? preview ?? Self.placeholder }
+    private static let placeholder = OPODriver(companionApp: "realme Link", knownToggles: Profiles.airSevenToggles).capabilities
+
+    var companionApp: String { caps.companionApp }
+
+    /// The paired buds have only been built from published protocol work, not tried on hardware.
+    var isExperimental: Bool { profile.map { !$0.tested } ?? false }
 
     // MARK: - Actions
 
     func refresh() {
         budsLink.refresh()
-        guard isLinked else { return }
-        budsLink.send(Request.battery())
-        budsLink.send(Request.earbudsStatus())
-        budsLink.send(Request.noiseMode())
+        budsLink.send(.refresh)
     }
 
     func connect() { budsLink.connectAudio() }
@@ -79,20 +90,16 @@ final class BudsStore: BudsLinkDelegate {
     func setNoiseMode(_ mode: NoiseMode) {
         guard isLinked, mode != shownNoiseMode else { return }
         pendingNoiseMode = mode
-        if mode == .cancel, let level = ancLevel {
-            // Turn ANC back on at the strength it had.
-            pendingAncLevel = level
-            budsLink.send(Request.setAncLevel(level))
-        } else {
-            budsLink.send(Request.setNoiseMode(mode))
-        }
+        // Turn ANC back on at the strength it had.
+        if mode == .cancel, let level = ancLevel { pendingAncLevel = level }
+        budsLink.send(.setNoise(mode, level: mode == .cancel ? ancLevel : nil))
     }
 
     func setAncLevel(_ level: AncLevel) {
         guard isLinked, level != shownAncLevel || shownNoiseMode != .cancel else { return }
         pendingNoiseMode = .cancel
         pendingAncLevel = level
-        budsLink.send(Request.setAncLevel(level))
+        budsLink.send(.setNoise(.cancel, level: level))
     }
 
     /// Adds or removes a mode from the hold gesture's cycle; it needs at least two.
@@ -105,38 +112,31 @@ final class BudsStore: BudsLinkDelegate {
             return
         }
         holdCycle = next
-        budsLink.send(Request.setHoldCycle(next))
+        budsLink.send(.setHoldCycle(next))
     }
 
-    func setMisc(_ setting: MiscSetting, _ on: Bool) {
-        guard isLinked, misc[setting] != nil else { return }
-        misc[setting] = on
-        budsLink.send(Request.setMisc(setting, on))
-        if setting == .spatial { budsLink.send(Request.setSpatialType(on)) }
+    func setToggle(_ toggle: Toggle, _ on: Bool) {
+        guard isLinked, toggles[toggle] != nil else { return }
+        toggles[toggle] = on
+        budsLink.send(.setToggle(toggle, on))
     }
 
-    func setVolumeBoost(_ on: Bool) {
-        guard isLinked, volumeBoost != nil else { return }
-        volumeBoost = on
-        budsLink.send(Request.setVolumeBoost(on))
-    }
-
-    func setEq(_ preset: EqPreset) {
+    func setEq(_ preset: UInt8) {
         guard isLinked, preset != shownEq else { return }
         pendingEq = preset
-        budsLink.send(Request.setEq(preset))
+        budsLink.send(.setEq(preset))
     }
 
     func setTouch(_ side: BudSide, _ gesture: Gesture, _ action: TouchAction) {
         guard isLinked, touch[side]?[gesture] != nil else { return }
-        touch[side]?[gesture] = action.rawValue
-        budsLink.send(Request.setTouch(TouchBinding(side: side, gesture: gesture, action: action.rawValue)))
+        touch[side]?[gesture] = action
+        budsLink.send(.setTouch(TouchBinding(side: side, gesture: gesture, action: action)))
     }
 
     func toggleRing() {
         guard isLinked else { return }
         ringing.toggle()
-        budsLink.send(Request.findDevice(ringing))
+        budsLink.send(.find(ringing))
         ringTimer?.invalidate()
         if ringing {
             ringTimer = Timer.scheduledTimer(withTimeInterval: 20, repeats: false) { [weak self] _ in
@@ -157,12 +157,34 @@ final class BudsStore: BudsLinkDelegate {
         launchAtLogin = SMAppService.mainApp.status == .enabled
     }
 
+    /// Writes what the buds said recently to a text file in Downloads and shows it in Finder.
+    func saveReport() {
+        let journal = budsLink.journal
+        guard !journal.isEmpty else {
+            show("Connect your buds first, so there's something to report.")
+            return
+        }
+        let text = journal.report(firmware: firmware, capabilities: capabilities)
+        let name = (link.name ?? "buds").replacingOccurrences(of: "/", with: "-")
+        let folder = FileManager.default.urls(for: .downloadsDirectory, in: .userDomainMask).first
+            ?? FileManager.default.temporaryDirectory
+        let url = folder.appendingPathComponent("Earshot report – \(name).txt")
+        do {
+            try text.write(to: url, atomically: true, encoding: .utf8)
+            NSWorkspace.shared.activateFileViewerSelecting([url])
+        } catch {
+            show("Couldn't save the report: \(error.localizedDescription)")
+        }
+    }
+
     // MARK: - BudsLinkDelegate
 
     func linkDidChangeState(_ state: BudsLink.State) {
         link = state
+        preview = budsLink.profile.map { $0.driver(name: state.name ?? "").capabilities }
         if case .linked = state { return }
         // Nothing we hold is trustworthy once the channel is gone.
+        capabilities = nil
         battery = [:]
         placement = [:]
         noiseMode = nil
@@ -170,13 +192,17 @@ final class BudsStore: BudsLinkDelegate {
         pendingNoiseMode = nil
         pendingAncLevel = nil
         holdCycle = []
-        misc = [:]
+        toggles = [:]
         touch = [:]
         eq = nil
         pendingEq = nil
-        volumeBoost = nil
+        firmware = nil
         ringing = false
         ringTimer?.invalidate()
+    }
+
+    func linkDidOpen(_ capabilities: Capabilities) {
+        self.capabilities = capabilities
     }
 
     func linkDidReceive(_ event: Event) {
@@ -195,51 +221,48 @@ final class BudsStore: BudsLinkDelegate {
             if let level { ancLevel = level }
             if pendingNoiseMode == mode { pendingNoiseMode = nil }
             if level != nil, pendingAncLevel == level { pendingAncLevel = nil }
+            if mode == .cancel, level == nil, pendingNoiseMode == nil { pendingAncLevel = nil }
         case let .holdCycle(modes):
             holdCycle = modes
-        case let .misc(map):
-            misc.merge(map) { _, new in new }
+        case let .toggles(map):
+            toggles.merge(map) { _, new in new }
         case let .touch(bindings):
-            var next: [BudSide: [Gesture: UInt8]] = [:]
+            var next = touch
             for binding in bindings { next[binding.side, default: [:]][binding.gesture] = binding.action }
             touch = next
         case let .eq(preset):
             eq = preset
             if pendingEq == preset { pendingEq = nil }
-        case let .volumeBoost(on):
-            volumeBoost = on
         case let .firmware(version):
             firmware = version
-        case let .ack(command, status):
-            handleAck(command: command, status: status)
+        case .capabilities:
+            break
+        case let .applied(setting):
+            applied(setting)
+        case let .refused(setting, code):
+            refused(setting, code: code)
         }
     }
 
-    func linkRequestFailed(_ command: Command) {
-        switch command {
-        case .ancConfigSet:
+    func linkRequestFailed(_ setting: Setting) {
+        switch setting {
+        case .noise:
             pendingNoiseMode = nil
             pendingAncLevel = nil
-            budsLink.send(Request.holdCycle())
             show("The buds didn't answer. Is a bud asleep or out of range?")
-        case .miscConfigSet:
-            budsLink.send(Request.misc(MiscSetting.allCases))
+        case .holdCycle:
             show("That setting didn't stick. Try again.")
-        case .touchConfigSet:
-            budsLink.send(Request.touch())
+        case .toggle:
+            show("That setting didn't stick. Try again.")
+        case .touch:
             show("That tap setting didn't stick. Try again.")
-        case .eqSet:
+        case .eq:
             pendingEq = nil
-            budsLink.send(Request.eq())
             show("The buds didn't answer. Try that EQ again.")
-        case .volumeBoostSet:
-            budsLink.send(Request.volumeBoost())
-            show("The buds didn't answer. Try volume boost again.")
-        case .findDevice:
+        case .find:
             ringing = false
-        default:
-            break
         }
+        budsLink.send(.read(setting))
     }
 
     /// True when the buds have reported where they are and neither is in an ear.
@@ -247,53 +270,48 @@ final class BudsStore: BudsLinkDelegate {
         !placement.isEmpty && !placement.values.contains(.inEar)
     }
 
-    private func handleAck(command: UInt16, status: UInt8) {
-        let ok = status == AckStatus.ok
-        switch command {
-        case Command.volumeBoostSet.rawValue:
-            // Read back, so the switch shows what the buds actually hold.
-            budsLink.send(Request.volumeBoost())
-            if !ok { show("The buds refused volume boost. It may need ANC off.") }
-        case Command.ancConfigSet.rawValue:
-            if ok {
-                if let mode = pendingNoiseMode { noiseMode = mode }
-                if let level = pendingAncLevel { ancLevel = level }
-            } else {
-                budsLink.send(Request.noiseMode())
-                budsLink.send(Request.earbudsStatus())
-                show(noBudWorn
-                     ? "Buds report no bud in an ear. Seat them and retry."
-                     : "Buds refused noise control (code \(String(format: "0x%02X", status))).")
-            }
+    private func applied(_ setting: Setting) {
+        switch setting {
+        case .noise:
+            if let mode = pendingNoiseMode { noiseMode = mode }
+            if let level = pendingAncLevel { ancLevel = level }
             pendingNoiseMode = nil
             pendingAncLevel = nil
-        case Command.miscConfigSet.rawValue where !ok:
-            budsLink.send(Request.misc(MiscSetting.allCases))
-            show("The buds refused that setting.")
-        case Command.touchConfigSet.rawValue:
-            // Read back either way, so what's shown is what the buds actually hold.
-            budsLink.send(Request.touch())
-            if !ok { show("The buds refused that tap setting.") }
-        case Command.eqSet.rawValue:
-            if ok, let preset = pendingEq { eq = preset } else if !ok { show("The buds refused that EQ.") }
+        case .eq:
+            if let preset = pendingEq { eq = preset }
             pendingEq = nil
-        case Command.findDevice.rawValue where !ok:
-            ringing = false
-            show("Put a bud in your ear or take it out of the case to ring it.")
-        default:
+        case .holdCycle, .toggle, .touch, .find:
             break
         }
     }
 
-    private func show(_ message: String) {
-        post(Notice(text: message, ok: false), for: 4)
+    private func refused(_ setting: Setting, code: UInt8) {
+        switch setting {
+        case .noise:
+            pendingNoiseMode = nil
+            pendingAncLevel = nil
+            show(capabilities?.noiseNeedsWear == true && (noBudWorn || code == OPOAck.notWorn)
+                 ? "Buds report no bud in an ear. Seat them and retry."
+                 : "Buds refused noise control (code \(String(format: "0x%02X", code))).")
+        case .toggle(.volumeBoost):
+            show("The buds refused volume boost. It may need ANC off.")
+        case .toggle, .holdCycle:
+            show("The buds refused that setting.")
+        case .touch:
+            show("The buds refused that tap setting.")
+        case .eq:
+            pendingEq = nil
+            show("The buds refused that EQ.")
+        case .find:
+            ringing = false
+            show("Put a bud in your ear or take it out of the case to ring it.")
+        }
     }
 
-
-    private func post(_ next: Notice, for seconds: TimeInterval) {
-        notice = next
+    private func show(_ message: String) {
+        notice = Notice(text: message, ok: false)
         noticeTimer?.invalidate()
-        noticeTimer = Timer.scheduledTimer(withTimeInterval: seconds, repeats: false) { [weak self] _ in
+        noticeTimer = Timer.scheduledTimer(withTimeInterval: 4, repeats: false) { [weak self] _ in
             MainActor.assumeIsolated { self?.notice = nil }
         }
     }
@@ -306,30 +324,6 @@ extension AncLevel {
         case .deep: "deep"
         case .moderate: "mid"
         case .mild: "mild"
-        }
-    }
-}
-
-extension EqPreset {
-    var title: String {
-        switch self {
-        case .original: "Original sound"
-        case .deepBass: "Deep bass"
-        case .serenade: "Serenade"
-        case .clearBass: "Clear bass"
-        }
-    }
-}
-
-extension MiscSetting {
-    var title: String {
-        switch self {
-        case .gameMode: "Game mode"
-        case .multipoint: "Dual device"
-        case .hiRes: "Hi-Res audio"
-        case .windNoise: "Wind reduction"
-        case .spatial: "Spatial audio"
-        case .dynamicBass: "Dynamic bass"
         }
     }
 }

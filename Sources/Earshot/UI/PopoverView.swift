@@ -146,9 +146,10 @@ private struct Header: View {
     }
 
     private var subtitle: String {
-        let name = store.link.name ?? "no realme buds paired"
-        if let firmware = store.firmware { return "\(name) · fw \(firmware)" }
-        return name
+        var parts = [store.link.name ?? "no supported buds paired"]
+        if store.isExperimental { parts.append("beta") }
+        if let firmware = store.firmware { parts.append("fw \(firmware)") }
+        return parts.joined(separator: " · ")
     }
 }
 
@@ -209,6 +210,21 @@ private struct SettingsView: View {
                 }
                 .padding(.vertical, 7)
                 .padding(.horizontal, 12)
+                HStack(spacing: 12) {
+                    VStack(alignment: .leading, spacing: 3) {
+                        Text("Report")
+                            .font(Typeface.grotesk(13, .medium))
+                        Text("What the buds said, for a GitHub issue")
+                            .font(Typeface.mono(9.5))
+                            .foregroundStyle(palette.faint)
+                    }
+                    Spacer()
+                    Button("Save") { store.saveReport() }
+                        .buttonStyle(ChunkyButtonStyle())
+                        .fixedSize()
+                }
+                .padding(.vertical, 7)
+                .padding(.horizontal, 12)
                 }
             }
 
@@ -216,6 +232,7 @@ private struct SettingsView: View {
                 SectionLabel(text: "About")
                 VStack(alignment: .leading, spacing: 4) {
                     aboutLine("Buds", store.link.name ?? "—")
+                    aboutLine("Support", store.profile.map { $0.tested ? "tested" : "beta, not yet tried on these" } ?? "—")
                     aboutLine("Firmware", store.firmware ?? "—")
                     aboutLine("Earshot", Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "dev")
                 }
@@ -338,9 +355,13 @@ struct BudsField: View {
             }
 
             HStack(alignment: .bottom, spacing: 0) {
-                BudColumn(side: .left)
-                CaseColumn()
-                BudColumn(side: .right)
+                if store.caps.kind == .headphones {
+                    HeadphonesColumn()
+                } else {
+                    BudColumn(side: .left)
+                    CaseColumn()
+                    BudColumn(side: .right)
+                }
             }
 
             if store.link.needsAction {
@@ -405,6 +426,27 @@ private struct BudColumn: View {
         case .inCase: return ("in case", .ghost)
         default: return ("ready", .ghost)
         }
+    }
+}
+
+/// Headphones have one battery, so the field shows one big reading.
+private struct HeadphonesColumn: View {
+    @Environment(BudsStore.self) private var store
+
+    var body: some View {
+        let reading = store.battery[.single]
+        let awake = store.isLinked && reading != nil
+        VStack(spacing: 8) {
+            PixelSprite(rows: Sprites.headphones, palette: Sprites.palette(dimmed: !awake), pixel: 4)
+            LevelText(level: awake ? reading?.level : nil, charging: reading?.charging == true)
+            PixelMeter(level: awake ? reading?.level : nil, segments: 10, block: 5,
+                       on: (reading?.level ?? 100) <= 20 && reading?.charging != true ? Ink.hot : Ink.ink)
+            PixelTag(text: !store.isLinked ? "—" : (reading?.charging == true ? "charging" : (awake ? "on" : "asleep")),
+                     style: reading?.charging == true ? .pink : .ghost)
+        }
+        .frame(maxWidth: .infinity)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(reading.map { "Headphones, \($0.level) percent" } ?? "Headphones, not reporting")
     }
 }
 
@@ -513,7 +555,7 @@ private struct LinkPrompt: View {
 
     private var message: String {
         switch store.link {
-        case .noBuds: "Pair your realme Buds with this Mac first, then they show up here."
+        case .noBuds: "Pair your buds with this Mac first. Earshot works with realme, OPPO, OnePlus, Samsung, Sony, Nothing and soundcore."
         case .away: "Your buds aren't connected to this Mac. Open the case and connect."
         case .linking: "Opening the control channel…"
         case .linked: ""

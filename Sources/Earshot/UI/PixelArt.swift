@@ -58,6 +58,22 @@ enum Sprites {
         "...-------------....",
     ]
 
+    /// Over-ear headphones: a band and two cups.
+    static let headphones = [
+        "....++++++++....",
+        "..++########-...",
+        ".+##--------##-.",
+        ".+#-........-#-.",
+        "+#-..........-#-",
+        "+#-..........-#-",
+        "x##..........##x",
+        "x###........###x",
+        "x###........###x",
+        "x###........###x",
+        "x##o........o##x",
+        ".---........---.",
+    ]
+
     /// The bud and case colours, printed on the green field.
     static func palette(dimmed: Bool) -> [Character: Color] {
         let alpha = dimmed ? 0.32 : 1
